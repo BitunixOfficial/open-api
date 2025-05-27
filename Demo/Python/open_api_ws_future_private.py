@@ -3,8 +3,9 @@ import json
 import logging
 import time
 import websockets
+import ssl
 from typing import Dict, Any, List
-from Demo.Python.open_api_ws_sign import get_auth_ws_future
+from open_api_ws_sign import get_auth_ws_future
 from config import Config
 
 # Configure logging
@@ -205,7 +206,10 @@ class OpenApiWsFuturePrivate:
         
         while reconnect_attempts < self.max_reconnect_attempts:
             try:
-                async with websockets.connect(self.base_url) as websocket:
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+                async with websockets.connect(self.base_url, ssl=ssl_context) as websocket:
                     self.websocket = websocket
                     self.is_connected = True
                     logging.info("WebSocket connection successful - private")
