@@ -1,0 +1,11 @@
+credentials:
+  api_key: your_api_key
+  secret_key: your_secret_key
+
+websocket:
+  public_uri: wss://fapi.bitunix.com/public/
+  private_uri: wss://fapi.bitunix.com/private/
+  reconnect_interval: 5
+
+http:
+  uri_prefix: https://fapi.bitunix.com
