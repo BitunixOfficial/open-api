@@ -29,7 +29,7 @@ class OpenApiWsFuturePrivate:
         self.max_reconnect_attempts = 5
         self.heartbeat_interval = 3  # Heartbeat interval, in seconds
         self.stop_ping = False
-        
+
     async def _send_ping(self):
         """Send heartbeat message"""
         while not self.stop_ping:
@@ -47,13 +47,13 @@ class OpenApiWsFuturePrivate:
                 logging.error(f"Ping task failed: {e}")
                 self.is_connected = False
                 break
-                
+
     async def _authenticate(self):
         """ Authenticate with the server """
         try:
             if not self.websocket or not self.is_connected:
                 raise Exception("WebSocket not connected")
-                
+
             auth_data = get_auth_ws_future(self.api_key, self.secret_key)
             await self.websocket.send(json.dumps({
                 "op": "login",
@@ -63,11 +63,11 @@ class OpenApiWsFuturePrivate:
         except Exception as e:
             logging.error(f"Authentication failed: {e}")
             raise
-            
+
     async def subscribe(self, channels: List[Dict[str, str]]):
         """
         Subscribe to private channels
-        
+
         Args:
             channels: List of channels to subscribe to, e.g.:
                 [
@@ -79,7 +79,7 @@ class OpenApiWsFuturePrivate:
         try:
             if not self.websocket or not self.is_connected:
                 raise Exception("WebSocket not connected")
-                
+
             await self.websocket.send(json.dumps({
                 "op": "subscribe",
                 "args": channels
@@ -88,7 +88,7 @@ class OpenApiWsFuturePrivate:
         except Exception as e:
             logging.error(f"Private subscription failed: {e}")
             raise
-            
+
     async def _handle_message(self, message: str):
         """Handle received messages"""
         try:
@@ -102,14 +102,14 @@ class OpenApiWsFuturePrivate:
 
             # Define allowed private channels
             allowed_channels = ['balance', 'position', 'order', 'tpsl']
-            
+
             if 'ch' in data and data['ch'] in allowed_channels:
                 await self.message_queue.put(data)
         except json.JSONDecodeError:
             logging.error("Failed to parse message")
         except Exception as e:
             logging.error(f"Error handling message: {e}")
-            
+
     async def _process_message(self, message: Dict[str, Any]):
         """Process messages in the message queue"""
         try:
@@ -127,7 +127,7 @@ class OpenApiWsFuturePrivate:
                 print(f"Cross Margin: {balance_data.get('crossMargin', 'N/A')}")
                 print(f"Experience Money: {balance_data.get('expMoney', 'N/A')}")
                 print("-------------------")
-                    
+
             elif message['ch'] == 'position':
                 # Handle position data
                 position_data = message['data']
@@ -148,7 +148,7 @@ class OpenApiWsFuturePrivate:
                 print(f"Funding: {position_data.get('funding', 'N/A')}")
                 print(f"Fee: {position_data.get('fee', 'N/A')}")
                 print("-------------------")
-            
+
             elif message['ch'] == 'order':
                 # Handle order data
                 order_data = message['data']
@@ -160,7 +160,7 @@ class OpenApiWsFuturePrivate:
                 print(f"Price: {order_data.get('price', 'N/A')}")
                 print(f"Quantity: {order_data.get('qty', 'N/A')}")
                 print("-------------------")
-            
+
             elif message['ch'] == 'tpsl':
                 # Handle tpsl data
                 tpsl_data = message['data']
@@ -179,16 +179,16 @@ class OpenApiWsFuturePrivate:
                 print(f"SL Price: {tpsl_data.get('slPrice', 'N/A')}")
                 print(f"SL Order Price: {tpsl_data.get('slOrderPrice', 'N/A')}")
                 print("-------------------")
-                
+
         except Exception as e:
             logging.error(f"Error processing message: {e}")
-            
+
     async def _consume_messages(self):
         """Consume message queue"""
         while True:
             message = await self.message_queue.get()
             await self._process_message(message)
-            
+
     async def _start_ping(self):
         """Start heartbeat task"""
         if self.ping_task:
@@ -199,27 +199,33 @@ class OpenApiWsFuturePrivate:
                 pass
         self.stop_ping = False
         self.ping_task = asyncio.create_task(self._send_ping())
-            
+
     async def connect(self):
         """Establish WebSocket connection"""
         reconnect_attempts = 0
-        
+
         while reconnect_attempts < self.max_reconnect_attempts:
             try:
                 ssl_context = ssl.create_default_context()
                 ssl_context.check_hostname = False
                 ssl_context.verify_mode = ssl.CERT_NONE
-                async with websockets.connect(self.base_url, ssl=ssl_context) as websocket:
+                async with websockets.connect(
+                        self.base_url,
+                        ssl=ssl_context,
+                        ping_interval=None,  # Disable automatic heartbeat at WebSocket protocol layer
+                        ping_timeout=5,  # Set ping timeout
+                        close_timeout=5  # Set close timeout
+                ) as websocket:
                     self.websocket = websocket
                     self.is_connected = True
                     logging.info("WebSocket connection successful - private")
-                    
+
                     # Authenticate with the server
                     await self._authenticate()
-                    
+
                     # Start heartbeat task
                     await self._start_ping()
-                    
+
                     try:
                         async for message in websocket:
                             await self._handle_message(message)
@@ -235,23 +241,23 @@ class OpenApiWsFuturePrivate:
                                 await self.ping_task
                             except asyncio.CancelledError:
                                 pass
-                    
+
                     self.is_connected = False
                     await asyncio.sleep(self.reconnect_interval)
                     reconnect_attempts += 1
                     logging.info(f"Attempting to reconnect... ({reconnect_attempts})")
-                    
+
             except Exception as e:
                 logging.error(f"WebSocket connection failed: {e}")
                 self.is_connected = False
                 await asyncio.sleep(self.reconnect_interval)
                 reconnect_attempts += 1
-                
+
     async def start(self):
         """Start WebSocket client"""
         # Start message consumption task
         consume_task = asyncio.create_task(self._consume_messages())
-        
+
         try:
             # Start connection task
             await self.connect()
@@ -265,7 +271,7 @@ class OpenApiWsFuturePrivate:
             if self.ping_task:
                 self.ping_task.cancel()
             consume_task.cancel()
-            
+
             # Wait for tasks to be cancelled
             await asyncio.gather(self.ping_task, consume_task, return_exceptions=True)
 
@@ -273,23 +279,23 @@ async def main():
     """Main function example"""
     # Load configuration
     config = Config()
-    
+
     # Create client
     client = OpenApiWsFuturePrivate(config)
-    
+
     # Start client
     client_task = asyncio.create_task(client.start())
-    
+
     # Wait for connection to be established
     await asyncio.sleep(2)
-    
+
     # Subscribe to channels
     await client.subscribe([
         {"ch": "balance"},
         {"ch": "position"},
         {"ch": "order"}
     ])
-    
+
     try:
         await client_task
     except KeyboardInterrupt:
