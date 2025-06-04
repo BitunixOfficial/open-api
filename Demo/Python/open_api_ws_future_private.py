@@ -302,4 +302,4 @@ async def main():
         logging.info("Program interrupted by user")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())
